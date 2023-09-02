@@ -1,0 +1,41 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol": {
+      "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\n\ninterface AggregatorV3Interface {\n  function decimals() external view returns (uint8);\n\n  function description() external view returns (string memory);\n\n  function version() external view returns (uint256);\n\n  function getRoundData(uint80 _roundId)\n    external\n    view\n    returns (\n      uint80 roundId,\n      int256 answer,\n      uint256 startedAt,\n      uint256 updatedAt,\n      uint80 answeredInRound\n    );\n\n  function latestRoundData()\n    external\n    view\n    returns (\n      uint80 roundId,\n      int256 answer,\n      uint256 startedAt,\n      uint256 updatedAt,\n      uint80 answeredInRound\n    );\n}\n"
+    },
+    "contracts/Converter.sol": {
+      "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.12;\n\nimport \"@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol\";\n\n//all functions in a library are internal and it cannot have static values\n//val1.fun(val2, val3,...); (Syntax for imported functions fun() which takes params val1, val2, val3, ...)\n\nlibrary Converter {\n    function getUsPrice(\n        AggregatorV3Interface priceFeed\n    ) internal view returns (uint256) {\n        // AggregatorV3Interface priceFeed = AggregatorV3Interface(\n        //     0x694AA1769357215DE4FAC081bf1f309aDC325306\n        // );\n        (, int price, , , ) = priceFeed.latestRoundData();\n        return uint256(price * 1e10); // us price is thousands and wei is in 18 zeroes so as to match them, we multiply be 10zeroes\n    }\n\n    function getEthUs(\n        uint256 ethAmt,\n        AggregatorV3Interface priceFeed\n    ) internal view returns (uint256) {\n        return ((ethAmt * getUsPrice(priceFeed)) / 1e18);\n    }\n}\n"
+    },
+    "contracts/fundMe.sol": {
+      "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.12;\n\nimport \"./Converter.sol\";\n\nerror NotOwner();\n\ncontract FundMe {\n    //ETH to usd : 0x694AA1769357215DE4FAC081bf1f309aDC325306\n\n    using Converter for uint256;\n\n    constructor(address priceFeedAddress) {\n        owner = msg.sender;\n        priceFeed = AggregatorV3Interface(priceFeedAddress);\n    }\n\n    AggregatorV3Interface public priceFeed;\n    address public immutable owner;\n    uint256 constant minVal = 10 * 1e18;\n    mapping(address => uint256) public funders;\n    address[] public fundersAdd;\n\n    function fund() public payable {\n        require(msg.value.getEthUs(priceFeed) >= minVal, \"Put more, Bro\");\n        if (fundersAdd.length > 0) {\n            for (uint i = 0; i < fundersAdd.length; i++) {\n                if (fundersAdd[i] == msg.sender) break;\n                else if (\n                    fundersAdd[i] != msg.sender && i == (fundersAdd.length - 1)\n                ) fundersAdd.push(msg.sender);\n            }\n        } else fundersAdd.push(msg.sender);\n\n        funders[msg.sender] += msg.value;\n    }\n\n    function withdraw(uint256 amt, address _from) public onlyOwner {\n        require(amt <= funders[_from], \"You are asking for too much\");\n        funders[_from] -= amt;\n\n        (bool callSuccess, ) = payable(msg.sender).call{value: amt}(\"\");\n        require(callSuccess, \"Failure in calling\");\n    }\n\n    modifier onlyOwner() {\n        if (msg.sender != owner) revert NotOwner();\n        _;\n    }\n\n    receive() external payable {\n        fund();\n    }\n\n    fallback() external payable {\n        fund();\n    }\n}\n"
+    }
+  },
+  "settings": {
+    "optimizer": {
+      "enabled": false,
+      "runs": 200
+    },
+    "outputSelection": {
+      "*": {
+        "*": [
+          "abi",
+          "evm.bytecode",
+          "evm.deployedBytecode",
+          "evm.methodIdentifiers",
+          "metadata",
+          "devdoc",
+          "userdoc",
+          "storageLayout",
+          "evm.gasEstimates"
+        ],
+        "": [
+          "ast"
+        ]
+      }
+    },
+    "metadata": {
+      "useLiteralContent": true
+    }
+  }
+}
